@@ -3,7 +3,7 @@
 This module defines a Cache class that interacts with Redis.
 It allows storing data using randomly generated keys,
 retrieving them with optional conversion,
-and counting method calls using a decorator.
+and counting method calls using decorators.
 """
 
 import redis
@@ -27,6 +27,28 @@ def count_calls(method: F) -> F:
     return wrapper  # type: ignore
 
 
+def call_history(method: F) -> F:
+    """
+    Decorator to store the history of inputs and outputs for a method in Redis.
+    """
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        input_key = f"{method.__qualname__}:inputs"
+        output_key = f"{method.__qualname__}:outputs"
+
+        # Store input args as string (ignoring kwargs for now)
+        self._redis.rpush(input_key, str(args))
+
+        # Call the original method
+        output = method(self, *args, **kwargs)
+
+        # Store output as string
+        self._redis.rpush(output_key, str(output))
+
+        return output
+    return wrapper  # type: ignore
+
+
 class Cache:
     """
     Cache class for storing data in Redis with random keys.
@@ -40,6 +62,7 @@ class Cache:
         self._redis.flushdb()
 
     @count_calls
+    @call_history
     def store(self, data: Union[str, bytes, int, float]) -> str:
         """
         Store the given data in Redis using a random UUID key.
