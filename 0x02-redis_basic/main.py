@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-""" Main file """
+""" Test web cache """
 
-Cache = __import__('exercise').Cache
+from web import get_page
+import time
 
-cache = Cache()
+url = "http://slowwly.robertomurray.co.uk/delay/3000/url/http://example.com"
 
-cache.store(b"first")
-print(cache.get(cache.store.__qualname__))  # Should print b'1'
+print("First fetch (should be slow):")
+print(get_page(url))  # Takes ~3 seconds
 
-cache.store(b"second")
-cache.store(b"third")
-print(cache.get(cache.store.__qualname__))  # Should print b'3'
+print("\nSecond fetch (should be instant):")
+print(get_page(url))  # Cached
+
+print("\nWaiting for cache to expire...")
+time.sleep(11)
+
+print("\nThird fetch (slow again):")
+print(get_page(url))  # Cached expired, fetches again
 
