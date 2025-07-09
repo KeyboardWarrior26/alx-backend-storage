@@ -3,7 +3,7 @@
 This module defines a Cache class that interacts with Redis.
 It allows storing data using randomly generated keys,
 retrieving them with optional conversion,
-and counting method calls using decorators.
+and tracking method calls and histories.
 """
 
 import redis
@@ -36,17 +36,33 @@ def call_history(method: F) -> F:
         input_key = f"{method.__qualname__}:inputs"
         output_key = f"{method.__qualname__}:outputs"
 
-        # Store input args as string (ignoring kwargs for now)
         self._redis.rpush(input_key, str(args))
-
-        # Call the original method
         output = method(self, *args, **kwargs)
-
-        # Store output as string
         self._redis.rpush(output_key, str(output))
 
         return output
     return wrapper  # type: ignore
+
+
+def replay(method: Callable) -> None:
+    """
+    Display the history of calls of a particular function.
+    Prints how many times it was called and the inputs/outputs for each call.
+    """
+    redis_client = redis.Redis()
+    method_name = method.__qualname__
+
+    # Get call count
+    count = redis_client.get(method_name)
+    count = int(count) if count else 0
+    print(f"{method_name} was called {count} times:")
+
+    # Fetch and print inputs and outputs
+    inputs = redis_client.lrange(f"{method_name}:inputs", 0, -1)
+    outputs = redis_client.lrange(f"{method_name}:outputs", 0, -1)
+
+    for inp, out in zip(inputs, outputs):
+        print(f"{method_name}(*{inp.decode('utf-8')}) -> {out.decode('utf-8')}")
 
 
 class Cache:
@@ -81,13 +97,6 @@ class Cache:
         """
         Retrieve data from Redis using the given key and optionally
         apply a transformation function.
-
-        Args:
-            key (str): The Redis key to look up.
-            fn (Callable, optional): Function to convert data type.
-
-        Returns:
-            The stored value (optionally transformed), or None if the key does not exist.
         """
         value = self._redis.get(key)
         if value is None:
@@ -99,24 +108,12 @@ class Cache:
     def get_str(self, key: str) -> Optional[str]:
         """
         Retrieve a UTF-8 string from Redis.
-
-        Args:
-            key (str): The Redis key.
-
-        Returns:
-            Optional[str]: The decoded string or None if key not found.
         """
         return self.get(key, fn=lambda d: d.decode("utf-8"))
 
     def get_int(self, key: str) -> Optional[int]:
         """
         Retrieve an integer from Redis.
-
-        Args:
-            key (str): The Redis key.
-
-        Returns:
-            Optional[int]: The integer value or None if key not found.
         """
         return self.get(key, fn=int)
 
